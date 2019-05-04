@@ -1,0 +1,39 @@
+Below are the general objects that everything needs 
+
+g++ -I/Users/blakemoore/gsl/include -O2 -g3 -Wall -c -fmessage-length=0 -std=c++14 -MMD -MP -MF"TaylorF2e.d" -MT"TaylorF2e.o" -o "TaylorF2e.o" "TaylorF2e.cpp"
+g++ -I/Users/blakemoore/gsl/include -O2 -g3 -Wall -c -fmessage-length=0 -std=c++14 -MMD -MP -MF"Amps.d" -MT"Amps.o" -o "Amps.o" "Amps.cpp"
+g++ -I/Users/blakemoore/eigen -I/Users/blakemoore/fftw/include -I/Users/blakemoore/gsl/include -O3 -ffast-math -g3 -c -fmessage-length=0 -std=c++14 -MMD -MP -MF"fisher.d" -MT"fisher.o" -o "fisher.o" "fisher.cpp"
+g++ -I/Users/blakemoore/fftw/include -I/Users/blakemoore/gsl/include -O3 -ffast-math -g3 -c -fmessage-length=0 -std=c++14 -MMD -MP -MF"llhood_maxd.d" -MT"llhood_maxd.o" -o "llhood_maxd.o" "llhood_maxd.cpp"
+
+Here are the compiles for the different codes that have a main
+g++ -I/Users/blakemoore/eigen -I/Users/blakemoore/fftw/include -I/Users/blakemoore/Desktop/Grad\ Research/MCMC_ecc -I/Users/blakemoore/gsl/include -O3 -ffast-math -g3 -c -fmessage-length=0 -std=c++14 -MMD -MP -MF"tst_fish.d" -MT"tst_fish.o" -o "tst_fish.o" "tst_fish.cpp"
+g++ -I/Users/blakemoore/eigen -I/Users/blakemoore/fftw/include -I/Users/blakemoore/Desktop/Grad\ Research/MCMC_ecc -I/Users/blakemoore/gsl/include -O3 -ffast-math -g3 -c -fmessage-length=0 -std=c++14 -MMD -MP -MF"MCMC_PT_fisher_hya.d" -MT"MCMC_PT_fisher_hya.o" -o "MCMC_PT_fisher_hya.o" "MCMC_PT_fisher_hya.cpp"
+
+Here are the builds:
+
+FOR tst_fish:
+
+g++ -L/Users/blakemoore/gsl/lib -L/Users/blakemoore/fftw/lib -o "tst_fish"  ./Amps.o ./TaylorF2e.o ./fisher.o ./tst_fish.o  -lfftw3 -lgsl -lgslcblas -lm
+
+run with something like
+
+./tst_fish 8 0.25 0.4 50 8e-18 1e-8 0.1
+
+args are
+
+./tst_fish chirp_mass eta e0 p0 amp epsilon df
+
+will output fisher and eigensystem for the epsilon and df given above (used in the finite diff and the df of the inner prods)
+
+
+FOR MCMC_PT_fisher_hya:
+
+g++ -L/Users/blakemoore/gsl/lib -L/Users/blakemoore/fftw/lib -o "tstmc"  ../Amps.o ../TaylorF2e.o ../llhood_maxd.o ../fisher.o ./MCMC_PT_fisher_hya.o  -lfftw3 -lgsl -lgslcblas -lm
+
+run with 
+
+./tstmc 150000 1 8.7 0.25 0.01 50 -38.55 1.8
+
+args are 
+
+./tstmc # jumps of cold chain, #ID for injections, Chirp mass (starting), eta, e0, p0, log(A), spacing of chains
