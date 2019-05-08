@@ -3,6 +3,7 @@
 //compile with
 // g++ -I/Users/blakemoore/eigen -I/Users/blakemoore/fftw/include -I/Users/blakemoore/gsl/include -O3 -ffast-math -g3 -c -fmessage-length=0 -std=c++14 -MMD -MP -MF"fisher.d" -MT"fisher.o" -o "fisher.o" "fisher.cpp"
 
+
 double inner_product(vector<complex<double>> &h1, vector<complex<double>> &h2, vector<double> &noise, double df){
     double sum;
     int N = h1.size();
@@ -136,18 +137,6 @@ Eigen::MatrixXd fim(vector<double> &loc, vector<double> &noise, double f0, doubl
 Eigen::MatrixXd fim(vector<double> &loc, vector<double> &noise, double f0, double fend, double df, double ep, double T){
     return 1./T*fim(loc, noise, f0, fend, df, ep);
 }
-void fisher_prop(vector<double> &loc, vector<double> &prop, Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es, const gsl_rng * r){
-    double delt = gsl_ran_gaussian (r, 1.);
-    int i = floor(gsl_ran_flat(r, 0, 5));
-    if (i == 5){i = 4;}
-//    prop[0] = loc[0] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(0);
-    prop[0] = loc[0]*exp(delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(0));
-    prop[1] = loc[1] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(1);
-    prop[2] = loc[2] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(2);
-    prop[3] = loc[3] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(3);
-    prop[4] = loc[4]*exp(delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(4));
-}
-
 ////////////////////////////////////////////////////////
 //
 // Here we're going to compute the fisher
@@ -281,11 +270,11 @@ Eigen::MatrixXd fim(vector<double> &loc, vector<double> &noise, double f0, doubl
     
     //Load up a fisher matrix
     Eigen::MatrixXd m(5,5);
-    m(0,0) = prod_mm;
-    m(1,1) = prod_etaeta;
-    m(2,2) = prod_e0e0;
-    m(3,3) = prod_p0p0;
-    m(4,4) = prod_AA;
+    m(0,0) = prod_mm + 1.38413;
+    m(1,1) = prod_etaeta + 1200.;
+    m(2,2) = prod_e0e0 + 18.75;
+    m(3,3) = prod_p0p0 + 0.000991736;
+    m(4,4) = prod_AA + 0.0017464;
     
     m(0,1) = prod_meta;
     m(0,2) = prod_me0;
@@ -314,6 +303,361 @@ Eigen::MatrixXd fim(vector<double> &loc, vector<double> &noise, double f0, doubl
     return m;
 }
 
+Eigen::MatrixXd fim_circ(vector<double> &loc, vector<double> &noise, double f0, double fend, double df, double ep ,int i){
+    //extract current location
+    double M = log(loc[0]);
+    double eta = loc[1];
+    double e0 = loc[2];
+    double p0 = loc[3];
+    double A = log(loc[4]);
+    
+    //First generate the waveforms required to compute the numerical derivatives (here ive just got the them as vectors with A_1, phi_1, .....)
+    vector<vector<double>> M_right = gen_amp_phs(M + ep, eta, e0, p0, A, f0, fend, df);
+    vector<vector<double>> M_left = gen_amp_phs(M - ep, eta, e0, p0, A, f0, fend, df);
+    
+    vector<vector<double>> eta_right = gen_amp_phs(M, eta + ep, e0, p0, A, f0, fend, df);
+    vector<vector<double>> eta_left = gen_amp_phs(M, eta - ep, e0, p0, A, f0, fend, df);
+    
+//    vector<vector<double>> e0_right = gen_amp_phs(M, eta, e0 + ep, p0, A, f0, fend, df);
+//    vector<vector<double>> e0_left = gen_amp_phs(M, eta, e0 - ep, p0, A, f0, fend, df);
+    
+//    vector<vector<double>> p0_right = gen_amp_phs(M, eta, e0, p0 + ep, A, f0, fend, df);
+//    vector<vector<double>> p0_left = gen_amp_phs(M, eta, e0, p0 - ep, A, f0, fend, df);
+    
+    vector<vector<double>> A_right = gen_amp_phs(M, eta, e0, p0, A + ep, f0, fend, df);
+    vector<vector<double>> A_left = gen_amp_phs(M, eta, e0, p0, A - ep, f0, fend, df);
+    
+    vector<vector<double>> A_gen = gen_amp_phs(M, eta, e0, p0, A, f0, fend, df);
+    
+    //Now the needed derivatives
+    
+    vector<vector<double>> M_deriv = finite_diff(M_right, M_left, ep);
+    vector<vector<double>> eta_deriv = finite_diff(eta_right, eta_left, ep);
+//    vector<vector<double>> e0_deriv = finite_diff(e0_right, e0_left, ep);
+//    vector<vector<double>> p0_deriv = finite_diff(p0_right, p0_left, ep);
+    vector<vector<double>> A_deriv = finite_diff(A_right, A_left, ep);
+    
+    //Now the inner products in the fisher
+    double prod_mm = prod_rev(M_deriv, M_deriv, A_gen, noise, df);
+    double prod_meta = prod_rev(M_deriv, eta_deriv, A_gen, noise, df);
+//    double prod_me0 = prod_rev(M_deriv, e0_deriv, A_gen, noise, df);
+//    double prod_mp0 = prod_rev(M_deriv, p0_deriv, A_gen, noise, df);
+    double prod_mA = prod_rev(M_deriv, A_deriv, A_gen, noise, df);
+    double prod_etaeta = prod_rev(eta_deriv, eta_deriv, A_gen, noise, df);
+//    double prod_etae0 = prod_rev(eta_deriv, e0_deriv, A_gen, noise, df);
+//    double prod_etap0 = prod_rev(eta_deriv, p0_deriv, A_gen, noise, df);
+    double prod_etaA = prod_rev(eta_deriv, A_deriv, A_gen, noise, df);
+//    double prod_e0e0 = prod_rev(e0_deriv, e0_deriv, A_gen, noise, df);
+//    double prod_e0p0 = prod_rev(e0_deriv, p0_deriv, A_gen, noise, df);
+//    double prod_e0A = prod_rev(e0_deriv, A_deriv, A_gen, noise, df);
+//    double prod_p0p0 = prod_rev(p0_deriv, p0_deriv, A_gen, noise, df);
+//    double prod_p0A = prod_rev(p0_deriv, A_deriv, A_gen, noise, df);
+    double prod_AA = prod_rev(A_deriv, A_deriv, A_gen, noise, df);
+    
+    //Load up a fisher matrix
+    Eigen::MatrixXd m(3,3);
+    m(0,0) = prod_mm + 1.38413;
+    m(1,1) = prod_etaeta + 1200.;
+    m(2,2) = prod_AA + 0.0017464;
+    
+//    m(0,0) = prod_mm;
+//    m(1,1) = prod_etaeta;
+//    m(2,2) = prod_AA;
+
+    
+    m(0,1) = prod_meta;
+//    m(0,2) = prod_me0;
+//    m(0,3) = prod_mp0;
+    m(0,2) = prod_mA;
+    m(1,0) = prod_meta;
+//    m(2,0) = prod_me0;
+//    m(3,0) = prod_mp0;
+    m(2,0) = prod_mA;
+    
+//    m(1,2) = prod_etae0;
+//    m(1,3) = prod_etap0;
+    m(1,2) = prod_etaA;
+//    m(2,1) = prod_etae0;
+//    m(3,1) = prod_etap0;
+    m(2,1) = prod_etaA;
+    
+//    m(2,3) = prod_e0p0;
+//    m(2,4) = prod_e0A;
+//    m(3,2) = prod_e0p0;
+//    m(4,2) = prod_e0A;
+    
+//    m(3,4) = prod_p0A;
+//    m(4,3) = prod_p0A;
+    return m;
+}
+
+Eigen::MatrixXd fim_ecc(vector<double> &loc, vector<double> &noise, double f0, double fend, double df, double ep ,int i){
+    //extract current location
+    double M = log(loc[0]);
+    double eta = loc[1];
+    double e0 = loc[2];
+    double p0 = loc[3];
+    double A = log(loc[4]);
+    
+    //First generate the waveforms required to compute the numerical derivatives (here ive just got the them as vectors with A_1, phi_1, .....)
+    vector<vector<double>> M_right = gen_amp_phs(M + ep, eta, e0, p0, A, f0, fend, df);
+    vector<vector<double>> M_left = gen_amp_phs(M - ep, eta, e0, p0, A, f0, fend, df);
+    
+    vector<vector<double>> eta_right = gen_amp_phs(M, eta + ep, e0, p0, A, f0, fend, df);
+    vector<vector<double>> eta_left = gen_amp_phs(M, eta - ep, e0, p0, A, f0, fend, df);
+    
+    vector<vector<double>> e0_right = gen_amp_phs(M, eta, e0 + ep, p0, A, f0, fend, df);
+    vector<vector<double>> e0_left = gen_amp_phs(M, eta, e0 - ep, p0, A, f0, fend, df);
+    
+    //    vector<vector<double>> p0_right = gen_amp_phs(M, eta, e0, p0 + ep, A, f0, fend, df);
+    //    vector<vector<double>> p0_left = gen_amp_phs(M, eta, e0, p0 - ep, A, f0, fend, df);
+    
+    vector<vector<double>> A_right = gen_amp_phs(M, eta, e0, p0, A + ep, f0, fend, df);
+    vector<vector<double>> A_left = gen_amp_phs(M, eta, e0, p0, A - ep, f0, fend, df);
+    
+    vector<vector<double>> A_gen = gen_amp_phs(M, eta, e0, p0, A, f0, fend, df);
+    
+    //Now the needed derivatives
+    
+    vector<vector<double>> M_deriv = finite_diff(M_right, M_left, ep);
+    vector<vector<double>> eta_deriv = finite_diff(eta_right, eta_left, ep);
+    vector<vector<double>> e0_deriv = finite_diff(e0_right, e0_left, ep);
+    //    vector<vector<double>> p0_deriv = finite_diff(p0_right, p0_left, ep);
+    vector<vector<double>> A_deriv = finite_diff(A_right, A_left, ep);
+    
+    //Now the inner products in the fisher
+    double prod_mm = prod_rev(M_deriv, M_deriv, A_gen, noise, df);
+    double prod_meta = prod_rev(M_deriv, eta_deriv, A_gen, noise, df);
+    double prod_me0 = prod_rev(M_deriv, e0_deriv, A_gen, noise, df);
+    //    double prod_mp0 = prod_rev(M_deriv, p0_deriv, A_gen, noise, df);
+    double prod_mA = prod_rev(M_deriv, A_deriv, A_gen, noise, df);
+    double prod_etaeta = prod_rev(eta_deriv, eta_deriv, A_gen, noise, df);
+    double prod_etae0 = prod_rev(eta_deriv, e0_deriv, A_gen, noise, df);
+    //    double prod_etap0 = prod_rev(eta_deriv, p0_deriv, A_gen, noise, df);
+    double prod_etaA = prod_rev(eta_deriv, A_deriv, A_gen, noise, df);
+    double prod_e0e0 = prod_rev(e0_deriv, e0_deriv, A_gen, noise, df);
+    //    double prod_e0p0 = prod_rev(e0_deriv, p0_deriv, A_gen, noise, df);
+    double prod_e0A = prod_rev(e0_deriv, A_deriv, A_gen, noise, df);
+    //    double prod_p0p0 = prod_rev(p0_deriv, p0_deriv, A_gen, noise, df);
+    //    double prod_p0A = prod_rev(p0_deriv, A_deriv, A_gen, noise, df);
+    double prod_AA = prod_rev(A_deriv, A_deriv, A_gen, noise, df);
+    
+    //Load up a fisher matrix
+    Eigen::MatrixXd m(4,4);
+    m(0,0) = prod_mm + 1.38413;
+    m(1,1) = prod_etaeta + 1200.;
+    m(2,2) = prod_e0e0 + 18.75;
+    m(3,3) = prod_AA + 0.0017464;
+    
+    m(0,1) = prod_meta;
+    m(0,2) = prod_me0;
+    //    m(0,3) = prod_mp0;
+    m(0,3) = prod_mA;
+    m(1,0) = prod_meta;
+    m(2,0) = prod_me0;
+    //    m(3,0) = prod_mp0;
+    m(3,0) = prod_mA;
+    
+    m(1,2) = prod_etae0;
+    //    m(1,3) = prod_etap0;
+    m(1,3) = prod_etaA;
+    m(2,1) = prod_etae0;
+    //    m(3,1) = prod_etap0;
+    m(3,1) = prod_etaA;
+    
+    //    m(2,3) = prod_e0p0;
+    m(2,3) = prod_e0A;
+    //    m(3,2) = prod_e0p0;
+    m(3,2) = prod_e0A;
+    
+    //    m(3,4) = prod_p0A;
+    //    m(4,3) = prod_p0A;
+    return m;
+}
+
 Eigen::MatrixXd fim(vector<double> &loc, vector<double> &noise, double f0, double fend, double df, double ep , double T, int i){
-    return 1./T*fim(loc, noise, f0, fend, df, ep, i);
+    if(i == 1){
+        Eigen::MatrixXd m = 1./T*fim_circ(loc, noise, f0, fend, df, ep, i);
+        double condition_number;
+        Eigen::JacobiSVD<Eigen::MatrixXd> svd(m, Eigen::ComputeThinU | Eigen::ComputeThinV);
+        Eigen::MatrixXd sings(3,3);
+        sings(0,0) = svd.singularValues()(0);
+        sings(1,1) = svd.singularValues()(1);
+        sings(2,2) = svd.singularValues()(2);
+        
+        sings(0,1) = 0;
+        sings(0,2) = 0;
+        sings(1,0) = 0;
+        sings(2,0) = 0;
+        
+        sings(1,2) = 0;
+        sings(2,1) = 0;
+        condition_number = sings(0,0)/sings(2,2);
+
+        //    cout << svd.matrixU() << endl << endl;
+        //    cout << sings << endl << endl;
+        //    cout << svd.matrixV().adjoint() << endl << endl;
+        //    cout << "make m  = " << svd.matrixU()*sings*svd.matrixV().adjoint() << endl << endl;
+        //    cout << "actual m = " << m << endl << endl;
+        while(condition_number > 5*1e5){
+            sings(2,2) *= 1.1;
+            m = svd.matrixU()*sings*svd.matrixV().adjoint();
+            svd.compute(m, Eigen::ComputeThinU | Eigen::ComputeThinV);
+            sings(0,0) = svd.singularValues()(0);
+            sings(1,1) = svd.singularValues()(1);
+            sings(2,2) = svd.singularValues()(2);
+            condition_number = sings(0,0)/sings(2,2);
+        }
+        //    cout << svd.matrixU() << endl << endl;
+        //    cout << sings << endl << endl;
+        //    cout << svd.matrixV().adjoint() << endl << endl;
+        //    cout << "make m  = " << svd.matrixU()*sings*svd.matrixV().adjoint() << endl << endl;
+        //    cout << "actual m = " << m << endl << endl;
+        //    cout << "condition number = " << condition_number << endl;
+        return m;
+    } else if (i == 2){
+        Eigen::MatrixXd m = 1./T*fim_ecc(loc, noise, f0, fend, df, ep, i);
+        double condition_number;
+        Eigen::JacobiSVD<Eigen::MatrixXd> svd(m, Eigen::ComputeThinU | Eigen::ComputeThinV);
+        Eigen::MatrixXd sings(4,4);
+        sings(0,0) = svd.singularValues()(0);
+        sings(1,1) = svd.singularValues()(1);
+        sings(2,2) = svd.singularValues()(2);
+        sings(3,3) = svd.singularValues()(3);
+        
+        sings(0,1) = 0;
+        sings(0,2) = 0;
+        sings(0,3) = 0;
+        sings(1,0) = 0;
+        sings(2,0) = 0;
+        sings(3,0) = 0;
+        
+        sings(1,2) = 0;
+        sings(1,3) = 0;
+        sings(2,1) = 0;
+        sings(3,1) = 0;
+        
+        sings(2,3) = 0;
+        sings(3,2) = 0;
+        condition_number = sings(0,0)/sings(3,3);
+        
+        //    cout << svd.matrixU() << endl << endl;
+        //    cout << sings << endl << endl;
+        //    cout << svd.matrixV().adjoint() << endl << endl;
+        //    cout << "make m  = " << svd.matrixU()*sings*svd.matrixV().adjoint() << endl << endl;
+        //    cout << "actual m = " << m << endl << endl;
+        while(condition_number > 5*1e5){
+            sings(3,3) *= 1.1;
+            m = svd.matrixU()*sings*svd.matrixV().adjoint();
+            svd.compute(m, Eigen::ComputeThinU | Eigen::ComputeThinV);
+            sings(0,0) = svd.singularValues()(0);
+            sings(1,1) = svd.singularValues()(1);
+            sings(2,2) = svd.singularValues()(2);
+            sings(3,3) = svd.singularValues()(3);
+            condition_number = sings(0,0)/sings(3,3);
+        }
+        //    cout << svd.matrixU() << endl << endl;
+        //    cout << sings << endl << endl;
+        //    cout << svd.matrixV().adjoint() << endl << endl;
+        //    cout << "make m  = " << svd.matrixU()*sings*svd.matrixV().adjoint() << endl << endl;
+        //    cout << "actual m = " << m << endl << endl;
+        //    cout << "condition number = " << condition_number << endl;
+        return m;
+    } else {
+        
+        Eigen::MatrixXd m = 1./T*fim(loc, noise, f0, fend, df, ep, i);
+        double condition_number;
+        Eigen::JacobiSVD<Eigen::MatrixXd> svd(m, Eigen::ComputeThinU | Eigen::ComputeThinV);
+        Eigen::MatrixXd sings(5,5);
+        sings(0,0) = svd.singularValues()(0);
+        sings(1,1) = svd.singularValues()(1);
+        sings(2,2) = svd.singularValues()(2);
+        sings(3,3) = svd.singularValues()(3);
+        sings(4,4) = svd.singularValues()(4);
+        
+        sings(0,1) = 0;
+        sings(0,2) = 0;
+        sings(0,3) = 0;
+        sings(0,4) = 0;
+        sings(1,0) = 0;
+        sings(2,0) = 0;
+        sings(3,0) = 0;
+        sings(4,0) = 0;
+        
+        sings(1,2) = 0;
+        sings(1,3) = 0;
+        sings(1,4) = 0;
+        sings(2,1) = 0;
+        sings(3,1) = 0;
+        sings(4,1) = 0;
+        
+        sings(2,3) = 0;
+        sings(2,4) = 0;
+        sings(3,2) = 0;
+        sings(4,2) = 0;
+        
+        sings(3,4) = 0;
+        sings(4,3) = 0;
+        condition_number = sings(0,0)/sings(4,4);
+        
+        //    cout << svd.matrixU() << endl << endl;
+        //    cout << sings << endl << endl;
+        //    cout << svd.matrixV().adjoint() << endl << endl;
+        //    cout << "make m  = " << svd.matrixU()*sings*svd.matrixV().adjoint() << endl << endl;
+        //    cout << "actual m = " << m << endl << endl;
+        while(condition_number > 5*1e5){
+            sings(4,4) *= 1.1;
+            m = svd.matrixU()*sings*svd.matrixV().adjoint();
+            svd.compute(m, Eigen::ComputeThinU | Eigen::ComputeThinV);
+            sings(0,0) = svd.singularValues()(0);
+            sings(1,1) = svd.singularValues()(1);
+            sings(2,2) = svd.singularValues()(2);
+            sings(3,3) = svd.singularValues()(3);
+            sings(4,4) = svd.singularValues()(4);
+            condition_number = sings(0,0)/sings(4,4);
+        }
+        //    cout << svd.matrixU() << endl << endl;
+        //    cout << sings << endl << endl;
+        //    cout << svd.matrixV().adjoint() << endl << endl;
+        //    cout << "make m  = " << svd.matrixU()*sings*svd.matrixV().adjoint() << endl << endl;
+        //    cout << "actual m = " << m << endl << endl;
+        //    cout << "condition number = " << condition_number << endl;
+        return m;
+    }
+}
+
+void fisher_prop(vector<double> &loc, vector<double> &prop, Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es, const gsl_rng * r){
+    double delt = gsl_ran_gaussian (r, 1.);
+    int i = floor(gsl_ran_flat(r, 0, 5));
+    if (i == 5){i = 4;}
+    //    prop[0] = loc[0] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(0);
+    prop[0] = loc[0]*exp(delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(0));
+    prop[1] = loc[1] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(1);
+    prop[2] = loc[2] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(2);
+    prop[3] = loc[3] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(3);
+    prop[4] = loc[4]*exp(delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(4));
+}
+
+void fisher_prop_circ(vector<double> &loc, vector<double> &prop, Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es, const gsl_rng * r){
+    double delt = gsl_ran_gaussian (r, 1.);
+    int i = floor(gsl_ran_flat(r, 0, 3));
+    if (i == 3){i = 2;}
+    //    prop[0] = loc[0] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(0);
+    prop[0] = loc[0]*exp(delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(0));
+    prop[1] = loc[1] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(1);
+    prop[2] = loc[2];
+    prop[3] = loc[3];
+    prop[4] = loc[4]*exp(delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(2));
+}
+
+void fisher_prop_ecc(vector<double> &loc, vector<double> &prop, Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es, const gsl_rng * r){
+    double delt = gsl_ran_gaussian (r, 1.);
+    int i = floor(gsl_ran_flat(r, 0, 4));
+    if (i == 4){i = 3;}
+    //    prop[0] = loc[0] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(0);
+    prop[0] = loc[0]*exp(delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(0));
+    prop[1] = loc[1] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(1);
+    prop[2] = loc[2] + delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(2);
+    prop[3] = loc[3];
+    prop[4] = loc[4]*exp(delt*1./sqrt((es.eigenvalues()(i)))*es.eigenvectors().col(i)(3));
 }

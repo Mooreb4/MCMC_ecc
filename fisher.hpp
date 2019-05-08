@@ -2,6 +2,7 @@
 #define FISHER_HPP_
 #include "TaylorF2e.hpp"
 #include <Eigen/Dense>
+#include <Eigen/SVD>
 #include <gsl/gsl_randist.h>
 
 
@@ -23,4 +24,7 @@ vector<double> finite_diff(vector<double> &vect_right, vector<double> &vect_left
 vector<vector<double>> finite_diff(vector<vector<double>> &vect_right, vector<vector<double>> &vect_left, double ep);
 Eigen::MatrixXd fim(vector<double> &loc, vector<double> &noise, double f0, double fend, double df, double ep ,int i);
 Eigen::MatrixXd fim(vector<double> &loc, vector<double> &noise, double f0, double fend, double df, double ep , double T, int i);
+void fisher_prop_circ(vector<double> &loc, vector<double> &prop, Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es, const gsl_rng * r);
+void fisher_prop_ecc(vector<double> &loc, vector<double> &prop, Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es, const gsl_rng * r);
+Eigen::MatrixXd fim_ecc(vector<double> &loc, vector<double> &noise, double f0, double fend, double df, double ep ,int i);
 #endif

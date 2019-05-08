@@ -266,11 +266,13 @@ double TaylorF2e::stat_e_j_minus(double& f, int& j){
 	double e_0;
 
 	e_1 = e_stat_last;			//the initial guess is the last stationary eccentricity (if its the first guess it is e0... implemented elsewhere)
-	e_0 = e_1 - e_1/50.;		//the next point for the secant method
+	e_0 = e_1 - e_1/10.;		//the next point for the secant method
 
 	// a first iteration of the secant method
 	double cond_val_e_1 = cond_minus(e_1, f, j);
+//	cout << "cond val 1 " << endl;
 	double cond_val_e_0 = cond_minus(e_0, f, j);
+//	cout << "cond val 2 " << endl;
 	double e_2 = e_1 - cond_val_e_1*(e_1-e_0)/(cond_val_e_1-cond_val_e_0);
 
 	//iterate method until the condition is satisfied to tolerance
@@ -278,6 +280,7 @@ double TaylorF2e::stat_e_j_minus(double& f, int& j){
 		e_0 = e_1;
 		cond_val_e_0 = cond_val_e_1;
 		e_1 = e_2;
+//		cout << "e_1 = " << e_1 << endl;
 		cond_val_e_1 = cond_minus(e_1,f,j);
 		e_2 = e_1 - cond_val_e_1*(e_1-e_0)/(cond_val_e_1-cond_val_e_0);
 		count++;
@@ -503,6 +506,7 @@ double TaylorF2e::amplookup_s(double e, int n){
 
 complex<double> TaylorF2e::h_j_minus(double& f, int& j){
 	double e = stat_e_j_minus(f, j);						//invert stat phase condition
+//	cout << "estat = " << e << endl;
 	double y = get_y_e(e);
 	double nj = amplookup_j(e, y, j);						//compute amplitude N_j
 	complex<double> amp = over_amp*sqrt(1/((j+2)*(96+292*e*e+37*pow(e,4))))*pow(y,-7./2.)*nj;			//compute overall amplitude
@@ -524,6 +528,7 @@ void TaylorF2e::make_F2e_min(){
 	for(int j = -1; j < j_min_max + 1; j++){ //iterate over j
 //		cout << "j = " << j << endl;
 		for(int i = j_min_range[j + 1][0]; i < j_min_range[j + 1][1] + 1; i++){ //iterate frequencies which are given by the scheme
+			if(i > N - 1) {break;}
 //			cout << "f = " << i*df << " i = " << i << " N = " << N <<  endl;
 			f = i*df;
 			F2_min[j + 1][i] = h_j_minus(f, j);									//store h_j(f)

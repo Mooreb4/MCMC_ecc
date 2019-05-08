@@ -27,18 +27,19 @@ void write_vec_to_file(vector<double> &vect, string str, string path);
 void cout_vec(vector<double> &vec);
 vector<vector<double>> write_in_F2(string str, string path, double flim);
 void jump(vector<double> &loc, vector<double> &prop, SelfAdjointEigenSolver<Eigen::MatrixXd> &es, const gsl_rng * r, double &likehere, double &likeprop, double &rh, vector<vector<double>> &samples, double T, int i, double fend, double df, vector<complex<double>> &h2, vector<double> &noise, int &counter);
-void update_fisher(vector<double> &loc, MatrixXd &fish, SelfAdjointEigenSolver<Eigen::MatrixXd> &es, double T, double fend, double df, vector<double> &noise);
+void update_fisher(vector<double> &loc, MatrixXd &fish, SelfAdjointEigenSolver<Eigen::MatrixXd> &es, double T, double fend, double df, vector<double> &noise, double ep_fish);
 void swap_loc(vector<double> &loc1, vector<double> &loc2);
 void inter_chain_swap(vector<double> &loc1, vector<double> &loc2, double &likehere1, double &likehere2, const gsl_rng * r, vector<vector<double>> &samples1, vector<vector<double>> &samples2, double T1, double T2, int i, double fend, double df, vector<complex<double>> &h2, vector<double> &noise, MatrixXd &fish1, MatrixXd &fish2, SelfAdjointEigenSolver<Eigen::MatrixXd> &es1 , SelfAdjointEigenSolver<Eigen::MatrixXd> &es2, int &counter);
 void swap_fishers(MatrixXd &fish1, MatrixXd &fish2, SelfAdjointEigenSolver<Eigen::MatrixXd> &es1 , SelfAdjointEigenSolver<Eigen::MatrixXd> &es2, double T1, double T2);
+void prior_prop(vector<double> &prop, const gsl_rng * r);
 
-string path_inj = "/mnt/lustrefs/work/blake.moore2/MCMC_ecc/injects/";
-string path_noise = "/mnt/lustrefs/work/blake.moore2/MCMC_ecc/noise/";
-string path_samples = "/mnt/lustrefs/work/blake.moore2/MCMC_ecc/fisher_PT/samples_DB/";
+//string path_inj = "/mnt/lustrefs/work/blake.moore2/MCMC_ecc/injects/";
+//string path_noise = "/mnt/lustrefs/work/blake.moore2/MCMC_ecc/noise/";
+//string path_samples = "/mnt/lustrefs/work/blake.moore2/MCMC_ecc/fisher_PT/samples/";
 
-//string path_inj = "/Users/blakemoore/Desktop/Grad Research/MCMC_ecc/injects/";
-//string path_noise = "/Users/blakemoore/Desktop/Grad Research/MCMC_ecc/noise/";
-//string path_samples = "/Users/blakemoore/Desktop/Grad Research/MCMC_ecc/fisher_prop_PT/samples_DB/";
+string path_inj = "/Users/blakemoore/Desktop/Grad Research/MCMC_ecc/injects/";
+string path_noise = "/Users/blakemoore/Desktop/Grad Research/MCMC_ecc/noise/";
+string path_samples = "/Users/blakemoore/Desktop/Grad Research/MCMC_ecc/fisher_prop_PT/samples_DB/";
 
 int main(int argc, const char * argv[]){
     
@@ -58,7 +59,7 @@ int main(int argc, const char * argv[]){
     
     double df = freqs[1];
     double fend = freqs[data_size - 1];
-    
+    cout << "fend = " << fend << endl;
     ////////////////////////////////
     // Set up the noise
     ////////////////////////////////
@@ -99,11 +100,13 @@ int main(int argc, const char * argv[]){
     ////////////////////////////////////////
     // Set up downsampled noise for the fisher
     ////////////////////////////////////////
-    int N_down_noise = fend/0.1 + 1;
+    double df_fish = 0.25;
+    double ep_fish = 1e-8;
+    int N_down_noise = fend/df_fish + 1;
     vector<double> noise_fish(N_down_noise);
     double f = 0;
     for (int i = 0; i < N_down_noise; i++)    {
-        f = 0.1*i;
+        f = df_fish*i;
         if (f > 1 &&  f < 4096 ) {
             noise_fish[i] = gsl_spline_eval (spline, f, acc);
         } else {
@@ -170,9 +173,12 @@ int main(int argc, const char * argv[]){
     likelihood3[0] = likehere3;
     
     
-    MatrixXd fish1 = fim(loc1, noise_fish, 0, fend, 0.1, 1e-8, T1, 1);
-    MatrixXd fish2 = fim(loc2, noise_fish, 0, fend, 0.1, 1e-8, T2, 1);
-    MatrixXd fish3 = fim(loc3, noise_fish, 0, fend, 0.1, 1e-8, T3, 1);
+    MatrixXd fish1 = fim(loc1, noise_fish, 0, fend, df_fish, ep_fish, T1, 3);
+    MatrixXd fish2 = fim(loc2, noise_fish, 0, fend, df_fish, ep_fish, T2, 3);
+    MatrixXd fish3 = fim(loc3, noise_fish, 0, fend, df_fish, ep_fish, T3, 3);
+//    SelfAdjointEigenSolver<Eigen::MatrixXd> es1(5);
+//    SelfAdjointEigenSolver<Eigen::MatrixXd> es2(5);
+//    SelfAdjointEigenSolver<Eigen::MatrixXd> es3(5);
     SelfAdjointEigenSolver<Eigen::MatrixXd> es1(5);
     SelfAdjointEigenSolver<Eigen::MatrixXd> es2(5);
     SelfAdjointEigenSolver<Eigen::MatrixXd> es3(5);
@@ -209,7 +215,7 @@ int main(int argc, const char * argv[]){
     ////////////////////////////////////////////////
     // The overall MCMC Routine now
     ////////////////////////////////////////////////
-    
+    clock_t t = clock();
     for(int i = 1; i < Njumps; i++){
         if(cont_chain != 5){ //propose within chain jumps
             cont_chain++;
@@ -231,9 +237,9 @@ int main(int argc, const char * argv[]){
         
         //Fisher updates
         if(fish_counter == 500){
-            update_fisher(loc1, fish1, es1, T1, fend, .1, noise_fish);
-            update_fisher(loc2, fish2, es2, T2, fend, .1, noise_fish);
-            update_fisher(loc3, fish3, es3, T3, fend, .1, noise_fish);
+            update_fisher(loc1, fish1, es1, T1, fend, df_fish, noise_fish, ep_fish);
+            update_fisher(loc2, fish2, es2, T2, fend, df_fish, noise_fish, ep_fish);
+            update_fisher(loc3, fish3, es3, T3, fend, df_fish, noise_fish, ep_fish);
             fish_counter = 0;
         }
         
@@ -243,16 +249,18 @@ int main(int argc, const char * argv[]){
         //Tracking;
         tracker++;
         if(tracker == 10000){
-            write_vec_to_file(samples1, "Samples_N_"+to_string(Njumps)+"_chain_1_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
-            write_vec_to_file(likelihood1, "likelihood_N_+"+to_string(Njumps)+"_chain_1_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
-            write_vec_to_file(samples2, "Samples_N_"+to_string(Njumps)+"_chain_2_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
-            write_vec_to_file(likelihood2, "likelihood_N_"+to_string(Njumps)+"_chain_2_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
-            write_vec_to_file(samples3, "Samples_N_"+to_string(Njumps)+"_chain_3_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
-            write_vec_to_file(likelihood3, "likelihood_N_"+to_string(Njumps)+"_chain_3_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
+//            write_vec_to_file(samples1, "Samples_N_"+to_string(Njumps)+"_chain_1_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
+//            write_vec_to_file(likelihood1, "likelihood_N_+"+to_string(Njumps)+"_chain_1_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
+//            write_vec_to_file(samples2, "Samples_N_"+to_string(Njumps)+"_chain_2_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
+//            write_vec_to_file(likelihood2, "likelihood_N_"+to_string(Njumps)+"_chain_2_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
+//            write_vec_to_file(samples3, "Samples_N_"+to_string(Njumps)+"_chain_3_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
+//            write_vec_to_file(likelihood3, "likelihood_N_"+to_string(Njumps)+"_chain_3_inj"+to_string(stoi(argv[2]))+".txt", path_samples);
         }
         
         
     }
+    t = clock() - t;
+    cout << setprecision(16) << "Time to run MCMC is  " << (float) t/CLOCKS_PER_SEC << " seconds" << endl;
     
     
     
@@ -270,14 +278,17 @@ int main(int argc, const char * argv[]){
     cout << "Chain 2 accpt ratio = " << (double) count_2/Njumps*6/5 << endl;
     cout << "Chain 3 accpt ratio = " << (double) count_3/Njumps*6/5 << endl;
     
-        cout << "Chain 1 accpt ratio = " << (double) count_1/Njumps << endl;
-    
-    
     return 0;
 }
 
 void jump(vector<double> &loc, vector<double> &prop, SelfAdjointEigenSolver<Eigen::MatrixXd> &es, const gsl_rng * r, double &likehere, double &likeprop, double &rh, vector<vector<double>> &samples, double T, int i, double fend, double df, vector<complex<double>> &h2, vector<double> &noise, int &counter){
-    fisher_prop(loc, prop, es, r);
+    double jump_roll = gsl_ran_flat(r, 0, 1);
+    if(jump_roll > 0.05){
+        fisher_prop(loc, prop, es, r);
+    } else {
+        prior_prop(prop, r);
+    }
+    
     int check_pri = check_priors(prop);
     
 //        cout << "Chain temp = " << T << endl;
@@ -289,25 +300,25 @@ void jump(vector<double> &loc, vector<double> &prop, SelfAdjointEigenSolver<Eige
     
     if(check_pri == 1){
         write_vec_to_vec(samples, loc, i);
- //              cout << "out of prior range" << endl;
+//               cout << "out of prior range" << endl;
     } else {
         double urn = gsl_ran_flat(r, 0, 1.);
         likeprop = loglike(prop, 0, fend, df, h2, noise, T);
- //            cout << "prop like = " << likeprop << endl;
+//             cout << "prop like = " << likeprop << endl;
         rh = min(1., exp(likeprop - likehere));
-  //            cout << "hastings ratio = " << rh << endl;
+//              cout << "hastings ratio = " << rh << endl;
         if(rh >= urn){
             set_loc(prop, loc);
             likehere = likeprop;
             write_vec_to_vec(samples, loc, i);
-  //                    cout << "accepted" << endl;
+//                      cout << "accepted" << endl;
             counter++;
         } else {
             write_vec_to_vec(samples, loc, i);
-   //                 cout << "rejected" << endl;
+//                    cout << "rejected" << endl;
         }
     }
-      cout << endl;
+//      cout << endl;
 }
 void inter_chain_swap(vector<double> &loc1, vector<double> &loc2, double &likehere1, double &likehere2, const gsl_rng * r, vector<vector<double>> &samples1, vector<vector<double>> &samples2, double T1, double T2, int i, double fend, double df, vector<complex<double>> &h2, vector<double> &noise, MatrixXd &fish1, MatrixXd &fish2, SelfAdjointEigenSolver<Eigen::MatrixXd> &es1 , SelfAdjointEigenSolver<Eigen::MatrixXd> &es2, int &counter){
     double likeT1X2 = loglike(loc2, 0, fend, df, h2, noise, T1);
@@ -330,8 +341,8 @@ void inter_chain_swap(vector<double> &loc1, vector<double> &loc2, double &likehe
         likehere1 = likeT1X2;
         likehere2 = likeT2X1;
   //             cout << "Locations after " << endl;
-        cout_vec(loc1);
-        cout_vec(loc2);
+  //      cout_vec(loc1);
+  //      cout_vec(loc2);
 //                cout << "Like 1 = " << likehere1 << " Like 2 = " << likehere2 << endl;
         write_vec_to_vec(samples1, loc1, i);
         write_vec_to_vec(samples2, loc2, i);
@@ -343,53 +354,9 @@ void inter_chain_swap(vector<double> &loc1, vector<double> &loc2, double &likehe
     }
 //       cout << endl;
 }
-void update_fisher(vector<double> &loc, MatrixXd &fish, SelfAdjointEigenSolver<Eigen::MatrixXd> &es, double T, double fend, double df, vector<double> &noise){
-//    fish = fim(loc, noise, 0, fend, df, 1e-8, T, 0);
-//    es.compute(fish);
-//
-    if(loc[2] > 0.1){
-//        cout << "Location is " << endl;
-//        cout << endl;
-//        cout_vec(loc);
-//        cout << endl;
-        
-        fish = fim(loc, noise, 0, fend, df, 1e-8, T, 1);
-        es.compute(fish);
-        
-//        cout << "Fisher updated to " << endl;
-//        cout << fish << endl;
-//        cout << endl;
-//        cout << "Eigen values are now " << endl;
-//        cout << endl;
-//        cout << es.eigenvalues() << endl;
-//        cout << "Eigen Vectors are now " << endl;
-//        cout << endl;
-//        cout << es.eigenvectors() << endl;
-//        cout << endl;
-    }
-    else {
-//        cout << "Location is " << endl;
-//        cout << endl;
-//        cout_vec(loc);
-//        cout << endl;
-        
-        vector<double> tmp_loc(5);
-        set_loc(loc, tmp_loc);
-        tmp_loc[2] = 0.1;
-        fish = fim(tmp_loc, noise, 0, fend, df, 1e-8, T, 1);
-        es.compute(fish);
-        
-//        cout << "Fisher updated to " << endl;
-//        cout << fish << endl;
-//        cout << endl;
-//        cout << "Eigen values are now " << endl;
-//        cout << endl;
-//        cout << es.eigenvalues() << endl;
-//        cout << "Eigen Vectors are now " << endl;
-//        cout << endl;
-//        cout << es.eigenvectors() << endl;
-//        cout << endl;
-    }
+void update_fisher(vector<double> &loc, MatrixXd &fish, SelfAdjointEigenSolver<Eigen::MatrixXd> &es, double T, double fend, double df, vector<double> &noise, double ep_fish){
+    fish = fim(loc, noise, 0, fend, df, ep_fish, T, 3);
+    es.compute(fish);
 }
 void swap_fishers(MatrixXd &fish1, MatrixXd &fish2, SelfAdjointEigenSolver<Eigen::MatrixXd> &es1 , SelfAdjointEigenSolver<Eigen::MatrixXd> &es2, double T1, double T2){
     MatrixXd fish_tmp;
@@ -401,12 +368,19 @@ void swap_fishers(MatrixXd &fish1, MatrixXd &fish2, SelfAdjointEigenSolver<Eigen
 }
 int check_priors(vector<double> &prop){
     int cont = 0;
-    if(prop[0] > 50 || prop[0] < 1) {cont = 1;}
+    if(prop[0] > 38 || prop[0] < 1) {cont = 1;}
     if(prop[1] > 0.25 || prop[1] < 0.15) {cont = 1;}
-    if(prop[2] > 0.8 || prop[2] < 0.001) {cont = 1;}
+    if(prop[2] > 0.8 || prop[2] < 0.0001) {cont = 1;}
     if(prop[3] > 150 || prop[3] < 40) {cont = 1;}
-    if(prop[4] > 1e-16 || prop[4] < 5.7e-19) {cont = 1;}
+    if(prop[4] > 1e-16 || prop[4] < 1e-20) {cont = 1;}
     return cont;
+}
+void prior_prop(vector<double> &prop, const gsl_rng * r){
+    prop[0] = exp(gsl_ran_flat(r, 0, 3.63759));
+    prop[1] = gsl_ran_flat(r, 0.15, 0.25);
+    prop[2] = gsl_ran_flat(r, 0.0001, 0.8);
+    prop[3] = gsl_ran_flat(r, 40, 150);
+    prop[4] = exp(gsl_ran_flat(r, -46.0517, -36.8414));
 }
 void set_loc(vector<double> &prop, vector<double> &loc){
     loc[0] = prop[0];
@@ -438,7 +412,7 @@ void write_vec_to_file(vector<vector<double>> &vect, string filename, string pat
 }
 
 void cout_vec(vector<double> &vec){
-    cout << " M = " << vec[0] <<  " eta = " << vec[1] <<  " e0 = " << vec[2] <<  " p0 = " << vec[3] <<  " amp = " << vec[4] << endl;
+    cout << setprecision(16) << " M = " << vec[0] <<  " eta = " << vec[1] <<  " e0 = " << vec[2] <<  " p0 = " << vec[3] <<  " amp = " << vec[4] << endl;
 }
 void write_vec_to_file(vector<complex<double>> &vect, string str, string path){
     ofstream out;
