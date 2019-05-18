@@ -103,6 +103,6 @@ double loglike(vector<double> &params, double f0, double fend, double df, vector
     return loglike(params[0], params[1], params[2], params[3], params[4], f0, fend, df, h2, noise);
 }
 double loglike(vector<double> &params, double f0, double fend, double df, vector<complex<double>> &h2, vector<double> &noise, double T){
-    return 1./T*loglike(params[0], params[1], params[2], params[3], params[4], f0, fend, df, h2, noise);
-//    return 0;
+//    return 1./T*loglike(params[0], params[1], params[2], params[3], params[4], f0, fend, df, h2, noise);
+    return 0;
 }

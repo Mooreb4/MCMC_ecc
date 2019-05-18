@@ -33,6 +33,7 @@ public:
 	double get_y_e(double e);
 	double get_e_fn(double fn);
 	double fin_cond(double e);
+	double get_p_e(double e);
 	double fourier_f_minus_e(double e, int j);
 	double fourier_f_plus_e(double e, int j);
 	double fourier_f_s_e(double e, int s);

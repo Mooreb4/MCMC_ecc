@@ -128,11 +128,15 @@ TaylorF2e::~TaylorF2e() {
 	// TODO Auto-generated destructor stub
 }
 
+double TaylorF2e::get_p_e(double e){
+	double y_e =  yevec(e, y_vec);
+	return 1./(y_e*y_e);
+}
+
 ////////////////////////////////////////////////////////////////
 //Below we set up interpolations of y(e), F_n(e), F_w(e), and e(F_n) which are used
 // to invert the stationary phase condition and in the amplitude
 ////////////////////////////////////////////////////////////////
-
 void TaylorF2e::init_interps(int N){
 	double de = (double) e0/N;
 	vector<double> y_in (N + 100);     				//make this vector bigger just so I don't run into memory issues
